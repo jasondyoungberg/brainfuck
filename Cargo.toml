@@ -1,0 +1,10 @@
+[package]
+name = "brainfuck"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+crossterm = "0.28.1"
+
+[dev-dependencies]
+proptest = "1.5.0"
