@@ -1,92 +1,81 @@
 extern printf
-
-section .data
-buffer: db 0
-
-section .rodata
-tape_err: db `Error while initilizing tape: %llx\n\0`
-input_err: db `Error while reading from stdin: %llx\n\0`
-output_err: db `Error while writing to stdout: %llx\n\0`
+extern scanf
+extern exit
+extern getchar
+extern putchar
+extern malloc
 
 section .text
-output:
-    ; read from tape to buffer
-    mov al, byte [rbx]
-    mov [buffer], al
-
-    mov rax, 1        ; write
-    mov rdi, 1        ; stdout
-    lea rsi, [buffer] ; buf
-    mov rdx, 1        ; len
-
-    syscall
-    cmp rax, 1
-    jne .err
-    
-    ret
-
-.err:
-    lea rdi, [output_err] ; fmt
-    mov rsi, rax        ; arg1
-    call printf
-    mov rdi, 1
-    jmp exit
-
-input:
-    mov rax, 0        ; read
-    mov rdi, 0        ; stdin
-    lea rsi, [buffer] ; buf
-    mov rdx, 1        ; len
-
-    syscall
-    cmp rax, 1
-    jne .err
-
-    ; read from buffer to tape
-    mov al, [buffer]
-    mov [rbx], al
-
-    ret
-
-.err:
-    lea rdi, [input_err] ; fmt
-    mov rsi, rax        ; arg1
-    call printf
-    mov rdi, 1
-    jmp exit
-
-init:
-    mov rax, 9       ; mmap
-    mov rdi, 0       ; addr
-    mov rsi, 16*1024 ; len
-    mov rdx, 0x3     ; prot: READ | WRITE
-    mov r10, 0x22    ; flags: PRIVATE | ANONYMOUS
-    mov r8, 0        ; fd
-    mov r9, 0        ; off
-
-    syscall
-    cmp rax, 0
-    jl .err
-
-    mov rbx, rax
-
-    ret
-
-.err:
-    lea rdi, [tape_err] ; fmt
-    mov rsi, rax        ; arg1
-    call printf
-    mov rdi, 1
-    jmp exit
-
-exit:
-    mov rax, 60
-    syscall
-    ud2
-
 global main
 main:
-    call init
+    and rsp, -16 ; algin stack
+
+    mov rdi, 16 * 1024 ; tape size
+    call malloc
+    test rax, rax
+    jz error
+    mov rbx, rax ; init tape
+
     call run
-    mov rdi, 0
+
+    xor rdi, rdi
     call exit
+    ud2
+
+output EQU output_std
+input EQU input_std
+
+section .text
+output_std:
+    movzx rdi, byte [rbx] ; read from tape
+    call putchar
+    test rax, rax
+    js error
+    ret
+
+section .text
+output_num:
+    lea rdi, [.fmt]
+    movzx rsi, byte [rbx] ; read from tape
+    call printf
+    test rax, rax
+    js error
+    ret
+section .rodata
+    .fmt: db `output: %d\n`, 0
+
+section .text
+input_std:
+    call getchar
+    test rax, rax
+    js error
+    mov [rbx], al ; write to tape
+    ret
+
+section .text
+input_num:
+    lea rdi, [.print_fmt]
+    call printf
+    test rax, rax
+    js error
+
+    lea rdi, [.scan_fmt]
+    lea rsi, [.buffer]
+    call scanf
+    test rax, rax
+    js error
+
+    mov al, [.buffer]
+    mov [rbx], al ; write to tape
+    ret
+section .data
+    .buffer: dd 0
+section .rodata
+    .print_fmt: db `input: `, 0
+    .scan_fmt: db `%d`, 0
+
+section .text
+error:
+    mov rdi, 1
+    call exit
+    ud2
