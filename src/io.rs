@@ -1,74 +1,56 @@
-use core::slice;
 use std::{
     io::{stdin, stdout, Read, Result, Write},
     num::IntErrorKind,
     process::exit,
 };
 
-pub enum Reader {
-    Standard,
-    Number,
-    Echo,
-    Raw,
-}
+use crate::IoKind;
 
-pub enum Writer {
-    Standard,
-    Number,
-}
-
-impl Read for Reader {
+impl Read for IoKind {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
         match self {
-            Reader::Standard => stdin().read(buf),
-            Reader::Number => number_read(buf),
-            Reader::Echo => echo_read(buf),
-            Reader::Raw => raw_read(buf),
+            IoKind::Std => std_read(buf),
+            IoKind::Num => number_read(buf),
         }
     }
 }
-impl Write for Writer {
+impl Write for IoKind {
     fn write(&mut self, buf: &[u8]) -> Result<usize> {
         match self {
-            Writer::Standard => stdout().write(buf),
-            Writer::Number => number_write(buf),
+            IoKind::Std => stdout().write(buf),
+            IoKind::Num => number_write(buf),
         }
     }
 
     fn flush(&mut self) -> Result<()> {
         match self {
-            Writer::Standard => stdout().flush(),
-            Writer::Number => number_flush(),
+            IoKind::Std => stdout().flush(),
+            IoKind::Num => Ok(()),
         }
     }
 }
 
-fn echo_read(buf: &mut [u8]) -> Result<usize> {
-    let read = stdin().read(buf)?;
+fn std_read(buf: &mut [u8]) -> Result<usize> {
+    let mut buf = buf;
 
-    let output = buf[0..read]
-        .iter()
-        .flat_map(|x| -> &[u8] {
-            match x {
-                3 => exit(0), // ctrl c
-                13 => b"\r\n",
-                _ => slice::from_ref(x),
-            }
-        })
-        .cloned()
-        .collect::<Box<_>>();
+    loop {
+        stdin().read_exact(buf)?;
 
-    stdout().write_all(&output)?;
-    stdout().flush()?;
-    Ok(read)
-}
+        if !buf.contains(&b'\r') {
+            break Ok(buf.len());
+        }
 
-fn raw_read(buf: &mut [u8]) -> Result<usize> {
-    let read = stdin().read(buf)?;
-    if buf[0..read].contains(&3) {
-        exit(0)
-    } else {
-        Ok(read)
+        let filtered = buf
+            .iter()
+            .cloned()
+            .filter(|c| *c != b'\r')
+            .collect::<Vec<_>>();
+
+        let (buf1, buf2) = buf.split_at_mut(filtered.len());
+
+        buf1.copy_from_slice(&filtered);
+
+        buf = buf2;
     }
 }
 
@@ -76,10 +58,6 @@ fn number_write(buf: &[u8]) -> Result<usize> {
     assert_eq!(buf.len(), 1, "only one byte can be written at a time");
     println!("output: {}", buf[0]);
     Ok(1)
-}
-
-fn number_flush() -> Result<()> {
-    Ok(())
 }
 
 fn number_read(buf: &mut [u8]) -> Result<usize> {
