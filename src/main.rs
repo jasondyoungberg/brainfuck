@@ -8,6 +8,8 @@
 //! `[` If the byte at the data pointer is zero, then instead of moving the instruction pointer forward to the next command, jump it forward to the command after the matching ] command.
 //! `]` If the byte at the data pointer is nonzero, then instead of moving the instruction pointer forward to the next command, jump it back to the command after the matching [ command.[a]
 
+pub mod assembler;
+pub mod compiler;
 pub mod error;
 pub mod io;
 pub mod parser;
@@ -17,6 +19,8 @@ pub mod token;
 
 use std::{env, fs, process::exit};
 
+use assembler::assemble;
+use compiler::compile;
 use crossterm::{
     style::Stylize,
     terminal::{disable_raw_mode, enable_raw_mode},
@@ -46,7 +50,7 @@ fn main() {
     });
 
     let code = String::from_utf8(code_bytes).unwrap_or_else(|err| {
-        eprintln!("invalid unicode in {filename}:\n{err}");
+        eprintln!("{}", format!("invalid unicode in {filename}:\n{err}").red());
         exit(1);
     });
 
@@ -60,17 +64,23 @@ fn main() {
         exit(1);
     });
 
-    let mut input = Reader::Standard;
-    let mut output = Writer::Standard;
+    let compiled = compile(&parsed);
+    assemble(&compiled, "a.out")
+        .unwrap_or_else(|err| eprintln!("{}", format!("error while compiling:\n{err}").red()));
 
-    if matches!(input, Reader::Echo | Reader::Raw) {
-        enable_raw_mode().unwrap_or_else(|err| {
-            eprintln!("{}", format!("error while enabling raw mode: {err}").red())
+    if false {
+        let mut input = Reader::Standard;
+        let mut output = Writer::Standard;
+
+        if matches!(input, Reader::Echo | Reader::Raw) {
+            enable_raw_mode().unwrap_or_else(|err| {
+                eprintln!("{}", format!("error while enabling raw mode: {err}").red())
+            });
+        }
+
+        execute(&parsed, &mut input, &mut output).unwrap_or_else(|err| {
+            eprintln!("{}", format!("error while executing code:\n{err}").yellow());
+            exit(1);
         });
     }
-
-    execute(&parsed, &mut input, &mut output).unwrap_or_else(|err| {
-        eprintln!("{}", format!("error while executing code:\n{err}").yellow());
-        exit(1);
-    });
 }
